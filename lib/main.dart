@@ -102,25 +102,113 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  var selectedIndex = 0;
+  
+  @override
+  Widget build(BuildContext context) {    
+    Widget page;
+    switch (selectedIndex) {
+      case 0:
+        page = const PlantPage();
+      case 1:
+        page = const GardenPage();
+      default:
+        throw UnimplementedError('no widget for ${selectedIndex}');
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Scaffold(
+          body: Row(
+            children: [
+              SafeArea(
+                child: NavigationRail(
+                  extended: constraints.maxWidth >= 600,
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.home),
+                      label: Text("Home"),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.local_florist),
+                      label: Text("My Garden"),
+                    ),
+                  ],
+                  selectedIndex: selectedIndex,
+                  onDestinationSelected: (value) {
+                    setState(() {
+                      selectedIndex = value;
+                    });
+                  },
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: page,
+                ),
+              )
+            ],
+          )
+        );
+      }
+    );
+  }
+}
+
+class PlantPage extends StatelessWidget {
+  const PlantPage({super.key,});
+
   @override
   Widget build(BuildContext context) {
     var appState = context.watch<MyAppState>();
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text("Plants:"),
-            ElevatedButton(
-              onPressed: () async {
-                final plants = await appState.getPlants();
-                // ignore: avoid_print
-                print(plants);
-              },
-              child: const Text("Print"),
-            ),
-          ],
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text("Plants:",),
+        Expanded(
+          child: FutureBuilder(
+            future: appState.getPlants(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(),);
+              } else if (snapshot.hasError) {
+                return Center(child: Text("Error: ${snapshot.error}"),);
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Text("No plants found"),);
+              }
+              
+              final plants = snapshot.data!;
+              return ListView.builder(
+                itemCount: plants.length,
+                itemBuilder: (context, index) {
+                  final plant = plants[index];
+                  return ListTile(
+                    title: Text(plant.commonName),
+                    subtitle: Text(plant.scientificName),
+                  );
+                },
+              ); 
+            }
+          ),
         ),
+      ],
+    );
+  }
+}
+
+class GardenPage extends StatelessWidget {
+  const GardenPage ({super.key,});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text("Favorited Plants Coming Soon..."),
+        ],
       ),
     );
   }
