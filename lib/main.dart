@@ -1,4 +1,5 @@
 import 'plant.dart';
+import 'plant_page.dart';
 
 import 'dart:io';
 import 'dart:async';
@@ -7,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:house_plant/plant_repository.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as path_utils;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -20,7 +21,7 @@ void main() async {
 
   // Get the path to the documents directory on the device
   final docsDir = await getApplicationDocumentsDirectory();
-  final dbPath = join(docsDir.path, "plant_data.db");
+  final dbPath = path_utils.join(docsDir.path, "plant_data.db");
 
   // Check if the database already exists
   final dbExists = await File(dbPath).exists();
@@ -111,13 +112,33 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   var selectedIndex = 0;
+  List<Plant> plantList = <Plant>[];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    if (_isLoading) { _getPlants(); }
+  }
+
+  Future<void> _getPlants() async {
+    final repository = Provider.of<PlantRepository>(context, listen: false);
+    var plants = await repository.getAllPlants();
+
+    setState(() {
+      plantList = plants;
+      _isLoading = false;
+    }); 
+  }
   
   @override
   Widget build(BuildContext context) {    
     Widget page;
+
     switch (selectedIndex) {
       case 0:
-        page = const PlantPage();
+        page = PlantPage(plants: plantList,);
       case 1:
         page = const GardenPage();
       default:
@@ -127,6 +148,18 @@ class _HomePageState extends State<HomePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return Scaffold(
+          appBar: AppBar(
+            title: const Text("House Plant"),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () => showSearch(
+                  context: context,
+                  delegate: PlantSearchDelegate(plants: plantList),
+                )
+              )
+            ],
+          ),
           body: Row(
             children: [
               SafeArea(
@@ -164,99 +197,52 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class PlantPage extends StatelessWidget {
-  const PlantPage({super.key,});
+class PlantSearchDelegate extends SearchDelegate {
+  PlantSearchDelegate({required this.plants});
 
-  // method for displaying the modal for each card
-  // and providing it with favorited state
-  void showPlantModal(BuildContext context, Plant plant, PlantRepository repository) async {
-    bool isFav = await repository.isFavorite(plant);
+  final List<Plant> plants;
+  List<Plant> results = <Plant>[];
 
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        // Use StatefulBuilder to allow changing icon on setState
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: Center(child: Text(plant.commonName)),
-            content: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              padding: const EdgeInsets.all(16.0),
-              child: Text("Scientific: ${plant.scientificName}\nCycle: ${plant.cycle}\nWatering Frequency: ${plant.watering}\nSunlight Requirements: ${plant.sunlight}"),
-            ),
-            actions: [
-              ElevatedButton.icon(
-                icon: Icon(
-                  isFav ? Icons.favorite : Icons.favorite_border,
-                  color: isFav ? Colors.red : null,
-                ),
-                label: Text(isFav ? "Remove from Garden" : "Add to Garden"),
-                onPressed: () async {
-                  if (isFav) {
-                    // Remove from favorites
-                    await repository.removeFromGarden(plant);
-                    setState(() {
-                      isFav = false;
-                    });
-                  } else {
-                    // Add to favorites
-                    await repository.addToGarden(plant);
-                    setState(() {
-                      isFav = true;
-                    });
-                  }
-                },
-              )
-            ],
-          )
-        );
-      }
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [IconButton(
+      icon: const Icon(Icons.clear),
+      onPressed: () => query.isEmpty ? close(context, null) : query = '',
+    )];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
-    var appState = context.watch<MyAppState>();
-    final repository = Provider.of<PlantRepository>(context, listen: false);
+  Widget buildResults(BuildContext context) {
+    return results.isEmpty 
+    ? const Center(
+        child: Text("No Results", style: TextStyle(fontSize: 24),),
+      )
+    : PlantPage(plants: results,);
+  }
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text("Plants:",),
-        Expanded(
-          child: FutureBuilder(
-            future: appState.getPlants(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(),);
-              } else if (snapshot.hasError) {
-                return Center(child: Text("Error: ${snapshot.error}"),);
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No plants found"),);
-              }
-              
-              final plants = snapshot.data!;
-              return ListView.builder(
-                itemCount: plants.length,
-                itemBuilder: (context, index) {
-                  final plant = plants[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 128, vertical: 8),
-                    child: ListTile(
-                      title: Text(plant.commonName),
-                      subtitle: Text(plant.scientificName),
-                      onTap: () {
-                        showPlantModal(context, plant, repository);
-                      },
-                    ),
-                  );
-                },
-              ); 
-            }
-          ),
-        ),
-      ],
-    );
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    results = plants.where((Plant plant) {
+      final String commonName = plant.commonName.toLowerCase();
+      final String scientificName = plant.scientificName.toLowerCase();
+      final String input = query.toLowerCase();
+
+      return commonName.contains(input) || scientificName.contains(input);
+    }).toList();
+
+    return results.isEmpty
+      ? const Center (
+          child: Text("No Results", style: TextStyle(fontSize: 24)),
+        )
+      : PlantPage(plants: results);
   }
 }
 
@@ -297,7 +283,16 @@ class GardenPage extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text("Here are the plants in your garden:",),
+         Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Card(
+            color: Theme.of(context).colorScheme.surface,
+            child: const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text("Here are the plants in your garden:"),
+            ),
+          ),
+        ),
         Expanded(
           child: FutureBuilder(
             future: appState.getFavoritePlants(),
@@ -316,7 +311,7 @@ class GardenPage extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final plant = plants[index];
                   return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    margin: const EdgeInsets.symmetric(horizontal: 128, vertical: 8),
                     child: ListTile(
                       title: Text(plant.commonName),
                       subtitle: Text(plant.scientificName),
