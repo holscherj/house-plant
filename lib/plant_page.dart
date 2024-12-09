@@ -66,35 +66,22 @@ class PlantPage extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Expanded(
-          child: FutureBuilder(
-            future: repository.getAllPlants(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(),);
-              } else if (snapshot.hasError) {
-                return Center(child: Text("Error: ${snapshot.error}"),);
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No plants found"),);
-              }
-              
-              return ListView.builder(
-                itemCount: plants.length,
-                itemBuilder: (context, index) {
-                  final plant = plants[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 128, vertical: 8),
-                    child: ListTile(
-                      title: Text(plant.commonName),
-                      subtitle: Text(plant.scientificName),
-                      onTap: () {
-                        showPlantModal(context, plant, repository);
-                      },
-                    ),
-                  );
-                },
-              ); 
-            }
-          ),
+          child: ListView.builder(
+            itemCount: plants.length,
+            itemBuilder: (context, index) {
+              final plant = plants[index];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 128, vertical: 8),
+                child: ListTile(
+                  title: Text(plant.commonName),
+                  subtitle: Text(plant.scientificName),
+                  onTap: () {
+                    showPlantModal(context, plant, repository);
+                  },
+                ),
+              );
+            },
+          ), 
         ),
       ],
     );
